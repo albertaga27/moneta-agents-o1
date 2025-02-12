@@ -1,0 +1,34 @@
+{  
+  "id": "123456",  
+  "clientID": "123456",  
+  "status" : "active",
+  "firstName": "Albert",  
+  "lastName": "Cook",  
+  "fullName": "Albert Cook",  
+  "dateOfBirth": "1980-01-01",  
+  "nationality": "US",  
+  "contactDetails": {  
+    "email": "albert@example.com",  
+    "phone": "123-456-7890"  
+  },  
+  "address": {  
+    "street": "123 Main St",  
+    "city": "New York",  
+    "state": "NY",  
+    "postalCode": "12345",  
+    "country": "USA"  
+  },  
+  "financialInformation": {  
+    "sourceOfWealth": ""
+  },  
+  "investmentProfile": {  
+    "risk_level" : "",
+    "risk_score" : 0,
+    "riskProfile": "",  
+    "investmentObjectives": "",  
+    "investmentHorizon": ""  
+  },  
+  "pep_status": false,
+  "documents_provided": [],
+  "name_screening_result": "None"
+}  

@@ -167,7 +167,7 @@ def perform_data_management_ai_extraction(prospect_data: Dict[str, Any]) -> Dict
     """
     ai_extracted_fields = {
         "passport_number": "MockPassport1234" if "passport" in prospect_data.get("documents_provided", []) else None,
-        "utility_bill_verified": "utility_bill" in prospect_data.get("documents_provided", []),
+        "proof_of_address_verified": "proof_of_address" in prospect_data.get("documents_provided", []),
     }
     
     #update client data status
@@ -282,6 +282,12 @@ def assign_first_line_of_defence(prospect_data: Dict[str, Any]) -> Dict[str, Any
 
     Update a record in DB or call an API to thid party system (case management etc.)
     """
+    #external process logic (human case review etc.)
+
+    #update client data status
+    prospect_data['status'] = "Assigned to human review (first line of defence)"
+    update_prospect_details(prospect_data['clientID'], prospect_data)
+
     return {
         "status": "Assigned to human review (first line of defence)"
     }
@@ -293,6 +299,12 @@ def receive_first_line_of_defence(prospect_data: Dict[str, Any]) -> Dict[str, An
 
     This would most likely be a polling query to check status of an API
     """
+
+    #external process logic (human case review etc.)
+
+    #update client data status
+    prospect_data['status'] = "First line of defence: approved"
+
     return {
         "status": "First line of defence: approved"
     }
@@ -324,7 +336,6 @@ def check_required_documents(prospect_data: Dict[str, Any]) -> Dict[str, Any]:
             extracted_data_points["passport_expiry_date"] = "2030-01-01"
         elif doc == "proof_of_address":
             extracted_data_points["address_verified"] = True
-            extracted_data_points["address_details"] = prospect_data.get("declared_address", "Unknown")
         elif doc == "corporate_doc":
             extracted_data_points["corporation_name"] = prospect_data.get("corporation_name", "N/A")
             extracted_data_points["incorporation_year"] = prospect_data.get("incorporation_year", "N/A")
@@ -340,95 +351,23 @@ def check_required_documents(prospect_data: Dict[str, Any]) -> Dict[str, Any]:
     return document_info
 
 
-def mock_ai_policy_check(data_point: str, policy_library: List[str]) -> bool:
+def generate_compliance_verification_report(prospect_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    A mock function representing an AI-based search service
-    that checks whether a given data point complies with internal policies.
-
-    In a production scenario, this could be an LLM or
-    semantic search system that scans policy documents for relevant matches.
-    """
-    for policy in policy_library:
-        # Very naive "match" check: if the policy string is in the data_point
-        if policy.lower() in data_point.lower():
-            return True
-    return False
-
-
-def perform_internal_due_diligence(
-    document_info: Dict[str, Any], 
-    policy_library: List[str]
-) -> Dict[str, Any]:
-    """
-    Step 4.2: Internal teams analyze the documents, confirm validity, 
-              and assess the client's risk. This includes using an AI-based 
-              search to ensure compliance with internal policies.
-    
-    :param document_info: Output from gather_official_documents (contains extracted data).
-    :param policy_library: A list of policy keywords/phrases to check compliance against.
-    :return: Dictionary with the due diligence results.
-    """
-    
-    if document_info["status"] == "Documents missing":
-        return {
-            "status": "Cannot complete internal due diligence - missing documents",
-            "compliant": False,
-            "issues_found": ["Required documents missing"],
-        }
-    
-    extracted_data = document_info["extracted_data_points"]
-    issues_found = []
-    
-    # Example check #1: Is passport still valid?
-    passport_expiry = extracted_data.get("passport_expiry_date")
-    if passport_expiry and passport_expiry < "2025-01-01":
-        issues_found.append("Passport is expired or expiring soon.")
-    
-    # Example check #2: Address verification
-    if not extracted_data.get("address_verified", False):
-        issues_found.append("No valid proof of address.")
-    
-    # Example check #3: AI-based policy scanning for each data point
-    # We simulate that any data point containing certain 'red-flag' terms would fail policy checks.
-    for key, value in extracted_data.items():
-        if isinstance(value, str):
-            # Try matching the data point against each policy keyword/phrase
-            if not mock_ai_policy_check(value, policy_library):
-                # If it fails to match relevant policy, we note an issue
-                pass  # In a real scenario, you might add a specific message here.
-    
-    # For demonstration, we randomly add or skip an issue
-    if random.choice([True, False]):
-        issues_found.append("Additional internal policy concern triggered by AI search.")
-    
-    is_compliant = len(issues_found) == 0
-    
-    return {
-        "status": "Internal due diligence complete" if is_compliant else "Issues identified",
-        "compliant": is_compliant,
-        "issues_found": issues_found,
-    }
-
-
-def generate_compliance_verification_report(due_diligence_result: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Step 4.3: Generate a report on findings—e.g., verifying identity, 
+    Step 4.2: Generate a report on findings—e.g., verifying identity, 
               beneficial ownership, cross-border compliance, etc.
               
-    :param due_diligence_result: The dictionary returned by perform_internal_due_diligence.
+    :param prospect_data: The dictionary with the prospect information
     :return: A structured compliance report.
     """
-    compliant = due_diligence_result["compliant"]
-    issues_found = due_diligence_result["issues_found"]
+    compliant = random.randint(0,1)
     
-    if not compliant:
+    if 0 == compliant:
         report_status = "Non-compliant / Additional checks required"
     else:
         report_status = "Fully compliant"
     
     return {
         "report_status": report_status,
-        "issues": issues_found,
         "summary": "Compliance verification completed with results above."
     }
 
@@ -451,10 +390,8 @@ FUNCTION_MAPPING = {
     'assign_first_line_of_defence' : assign_first_line_of_defence,
     'receive_first_line_of_defence' : receive_first_line_of_defence,
     'check_required_documents': check_required_documents,
-    'perform_internal_due_diligence': perform_internal_due_diligence,
     'generate_compliance_verification_report' : generate_compliance_verification_report
     
-   
 }
 
 TOOLS = [
@@ -714,38 +651,30 @@ TOOLS = [
           "type": "object",
           "properties": {
             "prospect_data": {
-              "type": "object",
-              "description": "Original prospect data dictionary.",
-              "additionalProperties": True
-            },
-            "kyc_info": {
-              "type": "object",
-              "description": "Result from collect_kyc_info function.",
-              "additionalProperties": True
-            },
-            "sow_info": {
-              "type": "object",
-              "description": "Result from collect_sow_info function.",
-              "additionalProperties": True
-            },
-            "client_profile": {
-              "type": "object",
-              "description": "Risk score/level info from create_client_profile.",
-              "additionalProperties": True
-            },
-            "name_screening_result": {
-              "type": "object",
-              "description": "Result from perform_name_screening function.",
-              "additionalProperties": True
+             "type": "object",
+              "properties": {
+                "clientID": {
+                  "type": "string"
+                },
+                "status": {
+                  "type": "string"
+                },
+                "name_screening_result": {
+                  "type": "string"
+                },
+                "risk_level": {
+                  "type": "string"
+                }
+              },
+              "required": [
+                "clientID",
+                "status",
+                "name_screening_result",
+                "risk_level"
+              ],
+              "description": "Prospect data containing risk_level, status, etc."
             }
-          },
-          "required": [
-            "prospect_data",
-            "kyc_info",
-            "sow_info",
-            "client_profile",
-            "name_screening_result"
-          ]
+          }
         }
       }
     },
@@ -757,13 +686,24 @@ TOOLS = [
         "parameters": {
           "type": "object",
           "properties": {
-            "prospect_data": {
-              "type": "object",
-              "description": "A dictionary containing up-to-date prospect info and status.",
-              "additionalProperties": True
-            }
-          },
-          "required": ["prospect_data"]
+              "prospect_data": {
+                "type": "object",
+                "properties": {
+                    "clientID": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "clientID",
+                    "status"
+                  ],
+                  "description": "A dictionary containing up-to-date prospect info and status."
+              }
+            },
+            "required": ["prospect_data"]
         }
       }
     },
@@ -775,13 +715,24 @@ TOOLS = [
         "parameters": {
           "type": "object",
           "properties": {
-            "prospect_data": {
-              "type": "object",
-              "description": "A dictionary containing up-to-date prospect info and status.",
-              "additionalProperties": True
-            }
-          },
-          "required": ["prospect_data"]
+              "prospect_data": {
+                "type": "object",
+                "properties": {
+                    "clientID": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "clientID",
+                    "status"
+                  ],
+                  "description": "A dictionary containing up-to-date prospect info and status."
+              }
+            },
+            "required": ["prospect_data"]
         }
       }
     },
@@ -790,13 +741,28 @@ TOOLS = [
       "function": {
         "name": "check_required_documents",
         "description": "Step 4.1 - Verify that the required documents have been provided and extract data.",
-        "parameters": {
+         "parameters": {
           "type": "object",
           "properties": {
             "prospect_data": {
               "type": "object",
-              "description": "Prospect data indicating what documents have been provided, etc.",
-              "additionalProperties": True
+              "properties": {
+                "clientID": {
+                  "type": "string"
+                },
+                "documents_provided": {
+                  "type": "array",
+                  "description": "A list of documents name provided by the prospect.",
+                  "items": {
+                    "type": "string"
+                  }
+                }
+              },
+              "required": [
+                "clientID",
+                "documents_provided"
+              ],
+              "description": "A dictionary of prospect data that may include 'documents_provided'."
             }
           },
           "required": ["prospect_data"]
@@ -806,43 +772,29 @@ TOOLS = [
     {
       "type": "function",
       "function": {
-        "name": "perform_internal_due_diligence",
-        "description": "Step 4.2 - Analyze provided documents, check validity, and ensure compliance with policies.",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "document_info": {
-              "type": "object",
-              "description": "The result from check_required_documents containing extracted document data.",
-              "additionalProperties": True
-            },
-            "policy_library": {
-              "type": "array",
-              "items": {
-                "type": "string"
-              },
-              "description": "A list of policy keywords/phrases to verify compliance."
-            }
-          },
-          "required": ["document_info", "policy_library"]
-        }
-      }
-    },
-    {
-      "type": "function",
-      "function": {
         "name": "generate_compliance_verification_report",
-        "description": "Step 4.3 - Produce a structured compliance report from internal due diligence results.",
+        "description": "Step 4.2 - Produce a structured compliance report.",
         "parameters": {
           "type": "object",
           "properties": {
-            "due_diligence_result": {
-              "type": "object",
-              "description": "The dictionary returned by perform_internal_due_diligence with compliance info.",
-              "additionalProperties": True
-            }
-          },
-          "required": ["due_diligence_result"]
+              "prospect_data": {
+                "type": "object",
+                "properties": {
+                    "clientID": {
+                      "type": "string"
+                    },
+                    "status": {
+                      "type": "string"
+                    }
+                  },
+                  "required": [
+                    "clientID",
+                    "status"
+                  ],
+                  "description": "A dictionary containing up-to-date prospect info and status."
+              }
+            },
+            "required": ["prospect_data"]
         }
       }
     }
