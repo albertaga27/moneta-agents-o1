@@ -152,3 +152,23 @@ class CRMStore:
             print(f"An error occurred while deleting: {e}")
             return False
 
+    
+    def load_all_prospects(self):
+        """
+        Retrieves all customer profiles from Cosmos DB where clientID starts with 'PRO'.
+        
+        Returns:
+        - list: A list of all matching customer profiles.
+        """
+        query = "SELECT * FROM c WHERE STARTSWITH(c.clientID, 'PRO')"
+        try:
+            items = list(self.container.query_items(
+                query=query,
+                enable_cross_partition_query=True
+            ))
+        except Exception as e:
+            print(f"An error occurred while loading all prospects: {e}")
+            return False  
+        return items
+
+
