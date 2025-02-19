@@ -4,8 +4,11 @@ import pandas as pd
 import json
 from datetime import datetime
 
+from ui_utils import *
+
 API_URL = "http://localhost:8000/prospects"
 UPDATE_PROSPECT_URL = "http://localhost:8000/update_prospect" 
+RUN_AGENTS_URL = "http://localhost:8000/run_ao_agents" 
 
 PHASES = [
     "KYC Information",
@@ -61,69 +64,7 @@ def map_status_to_phase(status: str) -> int:
             return idx
     return 0
 
-def subway_sidebar(active_phase_index: int):
-    """
-    Displays each phase in a vertical list, 
-    making the (circle + label) effectively clickable via a button.
-    """
-    # CSS to style the circle and color states
-    st.markdown(
-        """
-        <style>
-        .circle-row {
-            display: flex; 
-            align-items: center; 
-            margin-bottom: 0.5rem;
-        }
-        .step-circle {
-            width: 36px; 
-            height: 36px; 
-            border-radius: 50%;
-            background-color: #555; /* default upcoming color */
-            border: 3px solid #999;
-            color: #fff;
-            font-weight: bold;
-            display: flex; 
-            justify-content: center; 
-            align-items: center;
-            margin-right: 8px;
-        }
-        /* COMPLETED */
-        .completed {
-            background-color: #4CAF50 !important;
-            border-color: #4CAF50 !important;
-        }
-        /* ACTIVE */
-        .active {
-            background-color: #007BFF !important;
-            border-color: #007BFF !important;
-        }
-        </style>
-        """,
-        unsafe_allow_html=True
-    )
 
-    # Build a row for each phase
-    for i, phase_name in enumerate(PHASES):
-        if i < active_phase_index:
-            circle_class = "step-circle completed"
-        elif i == active_phase_index:
-            circle_class = "step-circle active"
-        else:
-            circle_class = "step-circle"
-
-        col_circle, col_label = st.columns([1, 5], gap="small")
-        with col_circle:
-            # The circle alone, with appropriate coloring
-            st.markdown(
-                f"<div class='circle-row'><div class='{circle_class}'>{i+1}</div></div>",
-                unsafe_allow_html=True
-            )
-        with col_label:
-            # The clickable button
-            if st.button(phase_name, key=f"phase_button_{i}"):
-                st.session_state.active_step = i
-                st.experimental_rerun()
 
 def show_form_for_step(step_index: int, prospect):
     """
@@ -182,9 +123,9 @@ def show_form_for_step(step_index: int, prospect):
         st.subheader("Step 2: Source of Wealth")
         
         # The possible SoW options
-        sow_options = ["Employment", "Business income", "Inheritance", "Donations"]
+        sow_options = ["Employment", "Business income", "Inheritance", "Donations", ""]
 
-        with st.form("documents_ai_form"):
+        with st.form("sow_form"):
             st.write("**Select Declared Source of Wealth**")
             selected_sow = st.multiselect(
                 "Choose all that apply:",
@@ -253,11 +194,10 @@ def show_form_for_step(step_index: int, prospect):
                 # 1) Copy the old prospect data
                 updated_p = dict(prospect)
 
-                # 2) Update fields from the form
-                updated_p["passport"] = passport_value
-                updated_p["proof_of_residency"] = por_value
+                # 2) Update fields from the form (mocked)
+                updated_p["documents_provided"] = ['passport','proof_of_address']
 
-                # TODO need to store these file(s) or upload them somewhere
+                # TODO need to store these file(s) or upload them somewhere and process the extraction
                 # e.g. updated_p["passport_file"] = passport_file.getvalue()  # as raw bytes
                 #      updated_p["por_file"] = por_file.getvalue()
                 # Or you might do a separate API call for each file
@@ -278,9 +218,29 @@ def show_form_for_step(step_index: int, prospect):
         st.subheader(f"Step {step_index+1}: {PHASES[step_index]}")
         st.info("Placeholder for that step's form here.")
 
-    if st.button("Back to List"):
-        st.session_state.view = "list"
-        st.experimental_rerun()
+
+    # Two columns for buttons actions
+    col_left, col_right = st.columns([4, 2], gap="large")
+
+    with col_left:
+        # Run agents button
+        if st.button("Run Agents", type="secondary", icon=":material/restart_alt:",use_container_width=False):
+        
+            updated_p = st.session_state.selected_prospect
+
+            # API call to run agentic process in the backend
+            api_response = run_agents_in_backend(updated_p)
+            if api_response:
+                # If your endpoint returns the updated doc, store it
+                st.session_state.selected_prospect = api_response
+                st.success("Agentic workflow ran succesfully!")
+            else:
+                st.error("Agentic workflow failed.")
+
+    with col_right:
+        if st.button("Back to List", type="tertiary", icon=":material/list:",use_container_width=False):
+            st.session_state.view = "list"
+            st.rerun()
 
 def show_prospect_list():
     prospects = st.session_state.prospects
@@ -307,7 +267,7 @@ def show_prospect_list():
         if row_cols[4].button("Show Details", key=f"show_{i}"):
             st.session_state.selected_prospect = p
             st.session_state.view = "detail"
-            st.experimental_rerun()
+            st.rerun()
 
 def show_prospect_details():
     """
@@ -329,10 +289,11 @@ def show_prospect_details():
     # Left: clickable steps
     with col_left:
         st.write("### Process Steps")
-        subway_sidebar(st.session_state.active_step)
+        subway_sidebar(st.session_state.active_step, PHASES)
 
     # Right: the relevant form
     with col_right:
+        show_banner(p)
         show_form_for_step(st.session_state.active_step, p)
 
 
@@ -357,6 +318,30 @@ def update_prospect_in_backend(prospect_data: dict, user_id: str = "default_user
         return data  
     except requests.exceptions.RequestException as e:
         st.error(f"Failed to update prospect in backend: {e}")
+        return None
+
+
+def run_agents_in_backend(prospect_data: dict, user_id: str = "default_user"):
+    """
+    Calls the FastAPI endpoint /run_ao_agents to update the status of the prospect.
+    Returns the response data 
+    """
+    payload = {
+        "user_id": user_id,
+        # The backend expects prospect_data as a JSON string
+        "prospect_data": json.dumps(prospect_data)
+    }
+    try:
+        resp = requests.post(RUN_AGENTS_URL, json=payload)
+        resp.raise_for_status()
+        # The endpoint returns a JSON string or None
+        data = resp.json()
+        # If data is a JSON string, parse it
+        if isinstance(data, str):
+            data = json.loads(data)
+        return data  
+    except requests.exceptions.RequestException as e:
+        st.error(f"Failed to run ao agentic process in backend: {e}")
         return None
 
 

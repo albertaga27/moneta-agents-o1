@@ -32,6 +32,8 @@ def create_prospect(first_name: str, last_name: str, dob: str, nationality: str,
             "phone": ""  
         },  
         "status": "KYC data collected successfully.",
+        "onboarding" : [],
+        "kyc_reviews" : [],
         "pep_status": False,
         "risk_level" : "",
         "risk_score" : 0,
@@ -41,7 +43,8 @@ def create_prospect(first_name: str, last_name: str, dob: str, nationality: str,
             "riskProfile": "",  
             "investmentObjectives": "",  
             "investmentHorizon": ""  
-        }
+        },
+        "declared_source_of_wealth" : ""
     }
     
     try:
@@ -125,24 +128,38 @@ def collect_kyc_info(prospect_data: Dict[str, Any]) -> Dict[str, Any]:
     """
     Step 2.1: KYC Information Collection
     - Checks if mandatory fields are present.
+    - Updates status and logs onboarding step.
     """
     mandatory_fields = ["firstName", "lastName", "dateOfBirth", "nationality"]
     missing_fields = [field for field in mandatory_fields if field not in prospect_data]
     
     if missing_fields:
         kyc_status = f"KYC incomplete. Missing fields: {missing_fields}"
+        action_description = f"Client KYC data is incomplete. Missing: {', '.join(missing_fields)}."
     else:
         kyc_status = "KYC data collected successfully"
-    
-    #update client data status
+        action_description = "Client KYC data successfully verified and collected."
+
+    # Update client data status
     prospect_data['status'] = kyc_status
+
+    # Add onboarding log entry
+    onboarding_entry = {
+        "timestamp": datetime.now().isoformat(),
+        "step": kyc_status,
+        "action": action_description
+    }
+    
+    prospect_data["onboarding"].append(onboarding_entry)
+
+    # Persist updated prospect data
     update_prospect_details(prospect_data['clientID'], prospect_data)
+
     return {
         "status": kyc_status,
-        "collected_data": {
-            field: prospect_data.get(field) for field in mandatory_fields
-        }
+        "onboarding": prospect_data["onboarding"]
     }
+
 
 def collect_sow_info(prospect_data: Dict[str, Any]) -> Dict[str, Any]:
     """
@@ -154,9 +171,19 @@ def collect_sow_info(prospect_data: Dict[str, Any]) -> Dict[str, Any]:
 
     #update client data status
     prospect_data['status'] = "SOW information captured"
+
+    # Add onboarding log entry
+    onboarding_entry = {
+        "timestamp": datetime.now().isoformat(),
+        "step": prospect_data['status'],
+        "action": f"SOW information captured: {prospect_data.get("declared_source_of_wealth", "")}"
+    }
+    
+    prospect_data["onboarding"].append(onboarding_entry)
+
     update_prospect_details(prospect_data['clientID'], prospect_data)
     return {
-        "source_of_wealth": sow,
+        "onboarding": prospect_data["onboarding"],
         "status": "SOW information captured"
     }
 
@@ -172,6 +199,15 @@ def perform_data_management_ai_extraction(prospect_data: Dict[str, Any]) -> Dict
     
     #update client data status
     prospect_data['status'] = "Documents AI extraction completed"
+
+    # Add onboarding log entry
+    onboarding_entry = {
+        "timestamp": datetime.now().isoformat(),
+        "step": prospect_data['status'],
+        "action": "Documents AI extraction completed"
+    }
+    
+    prospect_data["onboarding"].append(onboarding_entry)
     update_prospect_details(prospect_data['clientID'], prospect_data)
 
     return {
@@ -192,15 +228,24 @@ def perform_name_screening(prospect_data: Dict[str, Any]) -> Dict[str, Any]:
     )[0]
     
     if screening_outcome == "No match":
-        screening_status = "Cleared"
+        screening_status = "Name screening: Cleared"
     elif screening_outcome == "Potential match":
-        screening_status = "Further review required"
+        screening_status = "Name screening: Further review required"
     else:
         screening_status = "Name appears on sanctions list! High alert."
 
     #update client data status
     prospect_data['status'] = screening_status
     prospect_data['name_screening_result'] = screening_outcome
+
+    # Add onboarding log entry
+    onboarding_entry = {
+        "timestamp": datetime.now().isoformat(),
+        "step": prospect_data['status'],
+        "action": prospect_data['status']+f": Screening outcome: {screening_outcome}"
+    }
+    
+    prospect_data["onboarding"].append(onboarding_entry)
     update_prospect_details(prospect_data['clientID'], prospect_data)
     
     return {
@@ -241,6 +286,15 @@ def create_client_profile(prospect_data: Dict[str, Any], name_screening_result: 
     prospect_data['risk_level'] = risk_level
     prospect_data['risk_score'] = risk_score
     prospect_data['status'] = "Client risk profile assessed"
+
+    # Add onboarding log entry
+    onboarding_entry = {
+        "timestamp": datetime.now().isoformat(),
+        "step": prospect_data['status'],
+        "action": prospect_data['status']+f": Risk level is {risk_level}"
+    }
+    
+    prospect_data["onboarding"].append(onboarding_entry)
     update_prospect_details(prospect_data['clientID'], prospect_data)
 
     return {
@@ -268,6 +322,15 @@ def perform_compliance_risk_assessment(prospect_data: Dict[str, Any] ) -> Dict[s
     
     #update client data status
     prospect_data['status'] = "First KYC checks passed"
+
+    # Add onboarding log entry
+    onboarding_entry = {
+        "timestamp": datetime.now().isoformat(),
+        "step": prospect_data['status'],
+        "action": prospect_data['status']+f": Compliance status is {compliance_status}"
+    }
+    
+    prospect_data["onboarding"].append(onboarding_entry)
     update_prospect_details(prospect_data['clientID'], prospect_data)
 
     return {
@@ -286,6 +349,15 @@ def assign_first_line_of_defence(prospect_data: Dict[str, Any]) -> Dict[str, Any
 
     #update client data status
     prospect_data['status'] = "Assigned to human review (first line of defence)"
+    
+    # Add onboarding log entry
+    onboarding_entry = {
+        "timestamp": datetime.now().isoformat(),
+        "step": prospect_data['status'],
+        "action": prospect_data['status']+f": Waiting for first compliance approval"
+    }
+    
+    prospect_data["onboarding"].append(onboarding_entry)
     update_prospect_details(prospect_data['clientID'], prospect_data)
 
     return {
@@ -300,13 +372,26 @@ def receive_first_line_of_defence(prospect_data: Dict[str, Any]) -> Dict[str, An
     This would most likely be a polling query to check status of an API
     """
 
+    compliance_review = ""
     #external process logic (human case review etc.)
+    if not "First line of defence: approved" == prospect_data['status']:
+        compliance_review = "In compliance review"
+    else:
+        compliance_review = "First line of defence: approved"
 
-    #update client data status
-    prospect_data['status'] = "First line of defence: approved"
+    prospect_data['status'] = compliance_review
+    # Add onboarding log entry
+    onboarding_entry = {
+        "timestamp": datetime.now().isoformat(),
+        "step": prospect_data['status'],
+        "action": prospect_data['status']+f": {compliance_review}"
+    }
+    
+    prospect_data["onboarding"].append(onboarding_entry)
+    update_prospect_details(prospect_data['clientID'], prospect_data)
 
     return {
-        "status": "First line of defence: approved"
+        "status": prospect_data['status']
     }
 
 
