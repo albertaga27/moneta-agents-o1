@@ -15,7 +15,7 @@ from openai import AzureOpenAI
 def get_openai_client(key, endpoint, deployment):
     return AzureOpenAI(
         api_key=os.getenv(key),
-        api_version="2024-02-15-preview",
+        api_version="2025-01-01-preview",
         azure_endpoint=os.getenv(endpoint),
         azure_deployment=os.getenv(deployment)
     )
@@ -33,8 +33,8 @@ def call_o1(client, scenario):
         O1_PROMPT = """
 You are a an account opening assistant focusing on orchestrating a full end to end workflow of private banking investement account opening
 that involve several steps.
-You are a planner. The input you will receive (the scenario) include the current status of the workflow in the field "status".
-Your task is to review the status and understand which are the next steps to execute next (following the example plan in prder below) by creating a plan from the next bullet point on.
+You are a planner. The input you will receive (the scenario) include the current status of the workflow in the field "status" of the prospect_data.
+Your task is to review the status and understand which are the next steps to execute next (following the example plan in order below) by creating a plan.
 
 You will have access to an LLM agent that is responsible for executing the plan that you create and will return results.
 
@@ -42,10 +42,11 @@ The LLM agent has access to the following functions:
 {tools}
 
 When creating a plan for the LLM to execute, break your instructions into a logical, step-by-step order, using the specified format:
-    - **Main actions are marked with letters** (e.g., A, B, C..).
-    - **Sub-actions are under their relevant main actions** (e.g., A.1, B.2).
+    - **Main actions are marked with numbers** (e.g., 1, 2, 3.).
+    - **Sub-actions are under their relevant main actions** 
         - **Sub-actions should start on new lines**
     - **Specify conditions using clear 'if...then...else' statements** (e.g., 'If the status was approved, then...').
+    - **Include any function parameters from the scenario according to each that are required from each step**
     - **For actions that require using one of the above functions defined**, write a step to call a function using backticks for the function name (e.g., `call the load_from_crm_by_client_fullname function`).
         - Ensure that the proper input arguments are given to the model for instruction. There should not be any ambiguity in the inputs.
     - **The last step** in the instructions should always be calling the `instructions_complete` function. This is necessary so we know the LLM has completed all of the instructions you have given it.
@@ -71,7 +72,7 @@ Below is the ruleset of how you need to structure your final plan, including con
         prompt= O1_PROMPT.replace("{tools}",str(TOOLS)).replace("{scenario}",str(scenario))
      
         response = client.chat.completions.create(
-            model=os.getenv("O1_MINI_OPENAI_DEPLOYMENT_NAME"),
+            model=os.getenv("O1_OPENAI_DEPLOYMENT_NAME"),
             messages=[{'role': 'user', 'content': prompt}]
         )
         

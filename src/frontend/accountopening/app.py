@@ -18,7 +18,6 @@ PHASES = [
     "Risk Profile",
     "Compliance & Risk Assessment",
     "First Line of Defence",
-    "Check Documents",
     "Compliance Report",
     "Second line of defence",
     "Account opening"
@@ -51,10 +50,9 @@ def map_status_to_phase(status: str) -> int:
         "Risk Profile": 4,
         "Compliance & Risk Assessment": 5,
         "First Line of Defence": 6,
-        "Check Documents": 7,
-        "Compliance Report": 8,
-        "Second line of defence": 9,
-        "Account opening": 10
+        "Compliance Report": 7,
+        "Second line of defence": 8,
+        "Account opening": 9
     }
     # Example partial logic
     if "first line of defence" in status.lower():
@@ -214,10 +212,64 @@ def show_form_for_step(step_index: int, prospect):
                 else:
                     st.error("Backend update failed.")
 
+    elif step_index == 3:
+        st.subheader("Step 3: Name Screening")
+    
+        st.text(f"Client Names: {prospect.get("firstName")} {prospect.get("lastName")}")
+
+        st.title("Screening result:")
+        if prospect["name_screening_result"] == "None":
+            st.warning('Name checks not performed yet!', icon="⚠️")
+        else:
+            st.success(prospect['name_screening_result'], icon="✅")
+            
+    elif step_index == 4:
+        st.subheader("Step 4: Risk Profile")
+    
+        st.title("Evaluation:")
+        if prospect["risk_level"] == "":
+            st.warning('Risk profile not evaluated yet!', icon="⚠️")
+        else:
+            st.metric("Risk Level", prospect['risk_level'], delta=prospect['risk_level'], delta_color="normal", help=None, label_visibility="visible",  border=True)
+            st.metric("Risk Score", prospect['risk_score'], delta=prospect['risk_score'], delta_color="normal", help=None, label_visibility="visible",  border=True)
+    
+    elif step_index == 5:
+        st.subheader("Step 5: Compliance & Risk Assessment")
+    
+        st.title("First evaluation:")
+        st.text(f"Status: {prospect['status']}")
+        st.text(f"Flagged issues: {prospect['compliance_flags']}")
+
+    elif step_index == 6:
+        st.subheader("Step 6: First line of defence (Back-office)")
+    
+        st.title("Back-office review:")
+        st.text_area("Reviewer comments:")
+        approved = st.button("Approve", type="primary", icon="👍",use_container_width=False)
+        rejected = st.button("Reject", type="tertiary", icon="👎",use_container_width=False)
+        if approved:
+            updated_p = dict(prospect)
+            updated_p["status"] = "First line of defence: approved"
+
+            st.session_state.selected_prospect = updated_p
+            api_response = update_prospect_in_backend(updated_p)
+            if api_response:
+                st.success("Back-office approval updated in backend!")
+                st.session_state.selected_prospect = api_response
+            else:
+                st.error("Back-office approval update failed.")
+
+        #TODO rejection updates in backend
+
+
     else:
         st.subheader(f"Step {step_index+1}: {PHASES[step_index]}")
         st.info("Placeholder for that step's form here.")
-
+       
+       #TODO
+        # "Compliance Report": 7,
+        # "Second line of defence": 8,
+        # "Account opening": 9
 
     # Two columns for buttons actions
     col_left, col_right = st.columns([4, 2], gap="large")
@@ -228,14 +280,16 @@ def show_form_for_step(step_index: int, prospect):
         
             updated_p = st.session_state.selected_prospect
 
-            # API call to run agentic process in the backend
-            api_response = run_agents_in_backend(updated_p)
-            if api_response:
-                # If your endpoint returns the updated doc, store it
-                st.session_state.selected_prospect = api_response
-                st.success("Agentic workflow ran succesfully!")
-            else:
-                st.error("Agentic workflow failed.")
+            with st.spinner("Running agentic workflow in the backend...", show_time=False):
+                # API call to run agentic process in the backend
+                api_response = run_agents_in_backend(updated_p)
+                if api_response:
+                    # If your endpoint returns the updated doc, store it
+                    st.session_state.selected_prospect = api_response
+                    st.success("Agentic workflow ran succesfully!")
+                    st.rerun()
+                else:
+                    st.error("Agentic workflow failed.")
 
     with col_right:
         if st.button("Back to List", type="tertiary", icon=":material/list:",use_container_width=False):
@@ -244,7 +298,7 @@ def show_form_for_step(step_index: int, prospect):
 
 def show_prospect_list():
     prospects = st.session_state.prospects
-    st.markdown("<h2>Prospects Table</h2>", unsafe_allow_html=True)
+    st.markdown("<h2>Prospects</h2>", unsafe_allow_html=True)
     if not prospects:
         st.info("No prospects found from the API.")
         return
@@ -268,6 +322,10 @@ def show_prospect_list():
             st.session_state.selected_prospect = p
             st.session_state.view = "detail"
             st.rerun()
+    # New button at the bottom for creating a new prospect
+    if st.button("Create prospect", key="create_prospect"):
+        st.session_state.view = "create"
+        st.rerun()
 
 def show_prospect_details():
     """
@@ -295,6 +353,49 @@ def show_prospect_details():
     with col_right:
         show_banner(p)
         show_form_for_step(st.session_state.active_step, p)
+
+def show_create_prospect_form():
+    st.subheader("New Prospect")
+    # Switch between manual entry and document upload
+    creation_mode = st.radio("Select Creation Mode:", options=["Enter manually", "Upload documents"])
+    if creation_mode == "Enter manually":
+        st.markdown("### Enter Basic KYC Information")
+        with st.form("new_prospect_manual_form"):
+            first_name = st.text_input("First Name")
+            last_name = st.text_input("Last Name")
+            date_of_birth = st.date_input("Date of Birth")
+            nationality = st.text_input("Nationality")
+            email = st.text_input("Email")
+            phone = st.text_input("Phone")
+            if st.form_submit_button("Create Prospect"):
+                new_prospect = {
+                    "clientID": f"PRONEW{int(datetime.utcnow().timestamp())}",
+                    "firstName": first_name,
+                    "lastName": last_name,
+                    "dateOfBirth": str(date_of_birth),
+                    "nationality": nationality,
+                    "contactDetails": {"email": email, "phone": phone},
+                    "status": "New prospect - KYC pending",
+                    "fullName": f"{first_name} {last_name}"
+                }
+                # Optionally, call an API to persist this new prospect
+                st.session_state.prospects.append(new_prospect)
+                st.success("New prospect created successfully!")
+                st.session_state.view = "list"
+                st.rerun()
+    elif creation_mode == "Upload documents":
+        st.markdown("### Upload Documents for New Prospect")
+        with st.form("new_prospect_upload_form"):
+            st.info("This feature is under construction. Please upload the necessary documents.")
+            upload_files = st.file_uploader("Upload Documents", type=["pdf", "jpg", "png"], accept_multiple_files=True)
+            if st.form_submit_button("Submit Documents"):
+                # Process the uploaded files and create a new prospect record accordingly
+                st.success("Documents submitted successfully. (Feature under construction)")
+                st.session_state.view = "list"
+                st.rerun()
+    if st.button("Back to List", type="tertiary", icon=":material/list:",use_container_width=False):
+            st.session_state.view = "list"
+            st.rerun()
 
 
 def update_prospect_in_backend(prospect_data: dict, user_id: str = "default_user"):
@@ -361,8 +462,10 @@ def main():
     # Routing
     if st.session_state.view == "list":
         show_prospect_list()
-    else:
+    elif st.session_state.view == "detail":
         show_prospect_details()
+    elif st.session_state.view == "create":
+        show_create_prospect_form()
 
 if __name__ == "__main__":
     main()

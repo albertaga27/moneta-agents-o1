@@ -110,7 +110,7 @@ def run_ao_agents(request: dict = Body(...)):
     try:
         prospect_data = json.loads(request.get('prospect_data'))
 
-        o1_client = get_openai_client("O1_OPENAI_API_KEY", "O1_OPENAI_ENDPOINT", "O1_MINI_OPENAI_DEPLOYMENT_NAME")
+        o1_client = get_openai_client("O1_OPENAI_API_KEY", "O1_OPENAI_ENDPOINT", "O1_OPENAI_DEPLOYMENT_NAME")
         #o1 planner agent part
         o1_response = call_o1(o1_client, prospect_data)
 

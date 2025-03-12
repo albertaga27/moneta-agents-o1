@@ -13,7 +13,7 @@ from crm_store import CRMStore
 
 def create_prospect(first_name: str, last_name: str, dob: str, nationality: str, referral_source: str) -> Dict[str, Any]:
     """
-    Step 1: Create a prospect in the CRM with initial mimimal information
+    Create a prospect in the CRM with initial mimimal information
     
     """
     new_id = f"PROSP{10 + random.randint(1000, 9999)}"
@@ -31,7 +31,7 @@ def create_prospect(first_name: str, last_name: str, dob: str, nationality: str,
             "email": "",  
             "phone": ""  
         },  
-        "status": "KYC data collected successfully.",
+        "status": "new",
         "onboarding" : [],
         "kyc_reviews" : [],
         "pep_status": False,
@@ -95,6 +95,34 @@ def fetch_prospect_details(full_name: str) -> str:
     except Exception as e:
         logging.error(f"Error in load_from_crm_by_client_fullname: {str(e)}")
         return json.dumps({"error": f"load_from_crm_by_client_fullname failed with error: {str(e)}"})
+
+  
+def fetch_prospect_details_by_id(clientID: str) -> str:
+    """
+    Load prospect data from the CRM using the clientID.
+    
+    """
+    try:
+        # Example of how to pull from environment variables:
+        cosmosdb_endpoint = os.getenv("COSMOSDB_ENDPOINT") or ""
+        crm_database_name = os.getenv("COSMOSDB_DATABASE_NAME") or ""
+        crm_container_name = os.getenv("COSMOSDB_CONTAINER_CLIENT_NAME") or ""
+        key=DefaultAzureCredential()
+        
+        crm_db = CRMStore(
+             url=cosmosdb_endpoint,
+             key=key,
+             database_name=crm_database_name,
+             container_name=crm_container_name
+        )
+
+        response = crm_db.get_customer_profile_by_client_id(clientID)
+        return json.dumps(response) if response else None
+
+    except Exception as e:
+        logging.error(f"Error in load_from_crm_by_client_fullname: {str(e)}")
+        return json.dumps({"error": f"load_from_crm_by_client_fullname failed with error: {str(e)}"})
+  
   
 
 def update_prospect_details(client_id: str, prospect_data: Dict[str, Any]) -> Dict[str, Any]:
@@ -126,9 +154,8 @@ def update_prospect_details(client_id: str, prospect_data: Dict[str, Any]) -> Di
 
 def collect_kyc_info(prospect_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Step 2.1: KYC Information Collection
+    KYC Information Collection
     - Checks if mandatory fields are present.
-    - Updates status and logs onboarding step.
     """
     mandatory_fields = ["firstName", "lastName", "dateOfBirth", "nationality"]
     missing_fields = [field for field in mandatory_fields if field not in prospect_data]
@@ -140,20 +167,27 @@ def collect_kyc_info(prospect_data: Dict[str, Any]) -> Dict[str, Any]:
         kyc_status = "KYC data collected successfully"
         action_description = "Client KYC data successfully verified and collected."
 
-    # Update client data status
-    prospect_data['status'] = kyc_status
+    try:
+      # Update client data status
+      prospect_data['status'] = kyc_status
 
-    # Add onboarding log entry
-    onboarding_entry = {
-        "timestamp": datetime.now().isoformat(),
-        "step": kyc_status,
-        "action": action_description
-    }
-    
-    prospect_data["onboarding"].append(onboarding_entry)
+      # Add onboarding log entry
+      
+      onboarding_entry = {
+          "timestamp": datetime.now().isoformat(),
+          "step": kyc_status,
+          "action": action_description
+      }
+      
+      if "onboarding" not in prospect_data:
+        prospect_data["onboarding"] = []
+      prospect_data["onboarding"].append(onboarding_entry)
 
-    # Persist updated prospect data
-    update_prospect_details(prospect_data['clientID'], prospect_data)
+      # Persist updated prospect data
+      update_prospect_details(prospect_data['clientID'], prospect_data)
+
+    except Exception as e:
+      logging.error('error', f"Error in collect_kyc_info: {e}")
 
     return {
         "status": kyc_status,
@@ -163,25 +197,32 @@ def collect_kyc_info(prospect_data: Dict[str, Any]) -> Dict[str, Any]:
 
 def collect_sow_info(prospect_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Step 2.2: Source of Wealth (SOW) Information Collection
+    Source of Wealth (SOW) Information Collection
     - Accepts a declared source of wealth.
     """
     #mocked fixed response
     sow = prospect_data.get("declared_source_of_wealth", "Employment")
 
-    #update client data status
-    prospect_data['status'] = "SOW information captured"
+    try:
+      #update client data status
+      prospect_data['status'] = "SOW information captured"
 
-    # Add onboarding log entry
-    onboarding_entry = {
-        "timestamp": datetime.now().isoformat(),
-        "step": prospect_data['status'],
-        "action": f"SOW information captured: {prospect_data.get("declared_source_of_wealth", "")}"
-    }
-    
-    prospect_data["onboarding"].append(onboarding_entry)
+      # Add onboarding log entry
+      onboarding_entry = {
+          "timestamp": datetime.now().isoformat(),
+          "step": prospect_data['status'],
+          "action": f"SOW information captured: {prospect_data.get("declared_source_of_wealth", "")}"
+      }
+      
+      if "onboarding" not in prospect_data:
+        prospect_data["onboarding"] = []
+      prospect_data["onboarding"].append(onboarding_entry)
 
-    update_prospect_details(prospect_data['clientID'], prospect_data)
+      update_prospect_details(prospect_data['clientID'], prospect_data)
+
+    except Exception as e:
+      logging.error('error', f"Error in collect_sow_info: {e}")
+
     return {
         "onboarding": prospect_data["onboarding"],
         "status": "SOW information captured"
@@ -189,13 +230,28 @@ def collect_sow_info(prospect_data: Dict[str, Any]) -> Dict[str, Any]:
 
 def perform_data_management_ai_extraction(prospect_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Step 2.3: Data Management & AI Extraction
-    - Mock logic that pretends to parse attached documents (PDFs, images, etc.).
+    Data Management & AI Extraction
+    - Mock logic that pretends to parse attached documents (PDFs, images, etc.) to enrich the KYC.
     """
-    ai_extracted_fields = {
-        "passport_number": "MockPassport1234" if "passport" in prospect_data.get("documents_provided", []) else None,
-        "proof_of_address_verified": "proof_of_address" in prospect_data.get("documents_provided", []),
-    }
+    # Simulate a minimal list of required documents.
+    required_docs = ["passport", "proof_of_address"]
+    provided_docs = prospect_data.get("documents_provided", [])
+    
+    # Identify which required documents are missing
+    missing_docs = [doc for doc in required_docs if doc not in provided_docs]
+    
+    # Mock extracting data from each document (in practice, this could leverage an OCR/AI pipeline).
+    extracted_data_points = {}
+    for doc in provided_docs:
+        if doc == "passport":
+            extracted_data_points["passport_number"] = f"P-{random.randint(100000, 999999)}"
+            extracted_data_points["passport_issue_date"] = "2020-01-01"
+            extracted_data_points["passport_expiry_date"] = "2030-01-01"
+        elif doc == "proof_of_address":
+            extracted_data_points["address_verified"] = True
+        elif doc == "corporate_doc":
+            extracted_data_points["corporation_name"] = prospect_data.get("corporation_name", "N/A")
+            extracted_data_points["incorporation_year"] = prospect_data.get("incorporation_year", "N/A")
     
     #update client data status
     prospect_data['status'] = "Documents AI extraction completed"
@@ -207,18 +263,20 @@ def perform_data_management_ai_extraction(prospect_data: Dict[str, Any]) -> Dict
         "action": "Documents AI extraction completed"
     }
     
+    if "onboarding" not in prospect_data:
+        prospect_data["onboarding"] = []
     prospect_data["onboarding"].append(onboarding_entry)
     update_prospect_details(prospect_data['clientID'], prospect_data)
 
     return {
-        "extracted_fields": ai_extracted_fields,
+        "extracted_fields": extracted_data_points,
         "status": "Documents AI extraction completed"
     }
 
 def perform_name_screening(prospect_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Step 2.4: Name Screening & Exception Handling
-    - Randomly decides if the name appears on a watchlist or sanctions list.
+    Name Screening & Exception Handling
+    - Simulates if the prospect name appears on a watchlist or sanctions list.
     """
     possible_outcomes = ["No match", "Potential match", "Sanctions list match"]
     screening_outcome = random.choices(
@@ -245,6 +303,8 @@ def perform_name_screening(prospect_data: Dict[str, Any]) -> Dict[str, Any]:
         "action": prospect_data['status']+f": Screening outcome: {screening_outcome}"
     }
     
+    if "onboarding" not in prospect_data:
+        prospect_data["onboarding"] = []
     prospect_data["onboarding"].append(onboarding_entry)
     update_prospect_details(prospect_data['clientID'], prospect_data)
     
@@ -255,8 +315,8 @@ def perform_name_screening(prospect_data: Dict[str, Any]) -> Dict[str, Any]:
 
 def create_client_profile(prospect_data: Dict[str, Any], name_screening_result: str) -> Dict[str, Any]:
     """
-    Step 2.5: Client Profile Risk Evaluation
-    - Assigns a simple risk score/level based on name screening and nationality.
+    Client Profile Risk Evaluation
+    - Calculate a simple risk score/level based on name screening and nationality.
     """
     screening_outcome = name_screening_result
     risk_score = 0
@@ -294,44 +354,53 @@ def create_client_profile(prospect_data: Dict[str, Any], name_screening_result: 
         "action": prospect_data['status']+f": Risk level is {risk_level}"
     }
     
-    prospect_data["onboarding"].append(onboarding_entry)
+    if "onboarding" not in prospect_data:
+        prospect_data["onboarding"] = []
     update_prospect_details(prospect_data['clientID'], prospect_data)
 
     return {
         "risk_score": risk_score,
         "risk_level": risk_level,
-        "status": "Client profile generated."
+        "status": "Client risk profile assessed"
     }
 
 def perform_compliance_risk_assessment(prospect_data: Dict[str, Any] ) -> Dict[str, Any]:
     """
-    Step 2.6: Compliance & Risk Assessment
+    Compliance & Risk Assessment
     - If risk is 'High' or there's a sanctions list match, flag EDD.
     """
-    risk_level = prospect_data['risk_level']
-    screening_outcome =  prospect_data['name_screening_result']
-    
-    if risk_level == "High" or screening_outcome == "Sanctions list match":
-        compliance_status = "High-risk client. Further Enhanced Due Diligence required."
-    else:
-        compliance_status = "Standard compliance checks passed."
-    
-    flagged_issues = []
-    if "Missing fields" in prospect_data["status"]:
-        flagged_issues.append("Incomplete KYC data or suspicious info received.")
-    
-    #update client data status
-    prospect_data['status'] = "First KYC checks passed"
 
-    # Add onboarding log entry
-    onboarding_entry = {
-        "timestamp": datetime.now().isoformat(),
-        "step": prospect_data['status'],
-        "action": prospect_data['status']+f": Compliance status is {compliance_status}"
-    }
+    flagged_issues = []
     
-    prospect_data["onboarding"].append(onboarding_entry)
-    update_prospect_details(prospect_data['clientID'], prospect_data)
+    try:
+      risk_level = prospect_data['risk_level']
+      screening_outcome =  prospect_data['name_screening_result']
+      
+      if risk_level == "High" or screening_outcome == "Sanctions list match":
+          compliance_status = "High-risk client. Further Enhanced Due Diligence required."
+          flagged_issues.append(compliance_status)
+      else:
+          compliance_status = "First KYC checks passed."
+      
+      
+      #update client data status
+      prospect_data['status'] = compliance_status
+      prospect_data['compliance_flags'] = flagged_issues
+
+      # Add onboarding log entry
+      onboarding_entry = {
+          "timestamp": datetime.now().isoformat(),
+          "step": prospect_data['status'],
+          "action": prospect_data['status']+f": Compliance status is {compliance_status}"
+      }
+      
+      if "onboarding" not in prospect_data:
+        prospect_data["onboarding"] = []
+      prospect_data["onboarding"].append(onboarding_entry)
+      update_prospect_details(prospect_data['clientID'], prospect_data)
+
+    except Exception as e:
+      logging.error('error', f"Error in perform_compliance_risk_assessment: {e}")
 
     return {
         "overall_status": compliance_status,
@@ -341,120 +410,37 @@ def perform_compliance_risk_assessment(prospect_data: Dict[str, Any] ) -> Dict[s
 #3.1 Human interface case assigned for go/no-go (first line of defence)
 def assign_first_line_of_defence(prospect_data: Dict[str, Any]) -> Dict[str, Any]:
     """
-    Step 3.1: Assign the case with data and status so far to a Human interface for go/no-go (first line of defence).
+    Assign the case with data and status so far to a Human interface for go/no-go (first line of defence).
 
-    Update a record in DB or call an API to thid party system (case management etc.)
     """
-    #external process logic (human case review etc.)
+    #TODO external process logic (human case review etc.)
+    
+    try:
+      prospect_loaded = fetch_prospect_details_by_id(prospect_data["clientID"])  
+      prospect = json.loads(prospect_loaded)
 
-    #update client data status
-    prospect_data['status'] = "Assigned to human review (first line of defence)"
+      #update client data status
+      prospect['status'] = "Assigned to human review (first line of defence)"
+      
+      # Add onboarding log entry
+      onboarding_entry = {
+          "timestamp": datetime.now().isoformat(),
+          "step": prospect['status'],
+          "action": prospect['status']+f": Waiting for first compliance approval"
+      }
+      
+      if "onboarding" not in prospect:
+        prospect["onboarding"] = []
+      prospect["onboarding"].append(onboarding_entry)
+      update_prospect_details(prospect['clientID'], prospect)
     
-    # Add onboarding log entry
-    onboarding_entry = {
-        "timestamp": datetime.now().isoformat(),
-        "step": prospect_data['status'],
-        "action": prospect_data['status']+f": Waiting for first compliance approval"
-    }
-    
-    prospect_data["onboarding"].append(onboarding_entry)
-    update_prospect_details(prospect_data['clientID'], prospect_data)
+    except Exception as e:
+        logging.error('error', f"Error in assign_first_line_of_defence: {e}")
 
     return {
         "status": "Assigned to human review (first line of defence)"
     }
 
-#3.2 Human interface case outcome (first line of defence)
-def receive_first_line_of_defence(prospect_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Step 3.2: Outcome of the Human decision for go/no-go (first line of defence).
-
-    This would most likely be a polling query to check status of an API
-    """
-
-    compliance_review = ""
-    #external process logic (human case review etc.)
-    if not "First line of defence: approved" == prospect_data['status']:
-        compliance_review = "In compliance review"
-    else:
-        compliance_review = "First line of defence: approved"
-
-    prospect_data['status'] = compliance_review
-    # Add onboarding log entry
-    onboarding_entry = {
-        "timestamp": datetime.now().isoformat(),
-        "step": prospect_data['status'],
-        "action": prospect_data['status']+f": {compliance_review}"
-    }
-    
-    prospect_data["onboarding"].append(onboarding_entry)
-    update_prospect_details(prospect_data['clientID'], prospect_data)
-
-    return {
-        "status": prospect_data['status']
-    }
-
-
-def check_required_documents(prospect_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Step 4.1: Gather official documents such as passports, proof of address,
-              and any other client-provided documentation.
-
-    Simulates collecting these from the prospect and parsing essential data.
-    """
-    # In a real system, this step might involve uploading or scanning documents
-    # and verifying the file formats.
-    
-    # Simulate a minimal list of required documents.
-    required_docs = ["passport", "proof_of_address"]
-    provided_docs = prospect_data.get("documents_provided", [])
-    
-    # Identify which required documents are missing
-    missing_docs = [doc for doc in required_docs if doc not in provided_docs]
-    
-    # Mock extracting data from each document (in practice, this could leverage an OCR/AI pipeline).
-    extracted_data_points = {}
-    for doc in provided_docs:
-        if doc == "passport":
-            extracted_data_points["passport_number"] = f"P-{random.randint(100000, 999999)}"
-            extracted_data_points["passport_issue_date"] = "2020-01-01"
-            extracted_data_points["passport_expiry_date"] = "2030-01-01"
-        elif doc == "proof_of_address":
-            extracted_data_points["address_verified"] = True
-        elif doc == "corporate_doc":
-            extracted_data_points["corporation_name"] = prospect_data.get("corporation_name", "N/A")
-            extracted_data_points["incorporation_year"] = prospect_data.get("incorporation_year", "N/A")
-    
-    document_info = {
-        "required_docs": required_docs,
-        "provided_docs": provided_docs,
-        "missing_docs": missing_docs,
-        "extracted_data_points": extracted_data_points,
-        "status": "Documents captured successfully" if not missing_docs else "Documents missing"
-    }
-    
-    return document_info
-
-
-def generate_compliance_verification_report(prospect_data: Dict[str, Any]) -> Dict[str, Any]:
-    """
-    Step 4.2: Generate a report on findings—e.g., verifying identity, 
-              beneficial ownership, cross-border compliance, etc.
-              
-    :param prospect_data: The dictionary with the prospect information
-    :return: A structured compliance report.
-    """
-    compliant = random.randint(0,1)
-    
-    if 0 == compliant:
-        report_status = "Non-compliant / Additional checks required"
-    else:
-        report_status = "Fully compliant"
-    
-    return {
-        "report_status": report_status,
-        "summary": "Compliance verification completed with results above."
-    }
 
 #TODO: 5. Onboarding forms: filling, dispatching to client
 #TODO: 6. Signed forms recevied & review (second line of defence)
@@ -462,9 +448,11 @@ def generate_compliance_verification_report(prospect_data: Dict[str, Any]) -> Di
 #TODO: 8. EDD Integration (high risk case escalations only?)
 #TODO: 9. Account opening at Core banking system + welcome letter with accounts instructions
 
+def instructions_complete():
+    return
+
 
 FUNCTION_MAPPING = {
-    'create_prospect': create_prospect,
     'fetch_prospect_details': fetch_prospect_details,
     'collect_kyc_info': collect_kyc_info,
     'collect_sow_info': collect_sow_info,
@@ -473,9 +461,7 @@ FUNCTION_MAPPING = {
     'create_client_profile': create_client_profile,
     'perform_compliance_risk_assessment': perform_compliance_risk_assessment,
     'assign_first_line_of_defence' : assign_first_line_of_defence,
-    'receive_first_line_of_defence' : receive_first_line_of_defence,
-    'check_required_documents': check_required_documents,
-    'generate_compliance_verification_report' : generate_compliance_verification_report
+    'instructions_complete': instructions_complete
     
 }
 
@@ -483,41 +469,8 @@ TOOLS = [
     {
       "type": "function",
       "function": {
-        "name": "create_prospect",
-        "description": "Step 1.1: Create a new prospect in the CRM with minimal information.",
-        "parameters": {
-          "type": "object",
-          "properties": {
-            "first_name": {
-              "type": "string",
-              "description": "The prospect's first name."
-            },
-            "last_name": {
-              "type": "string",
-              "description": "The prospect's last name."
-            },
-            "dob": {
-              "type": "string",
-              "description": "The date of birth in YYYY-MM-DD format."
-            },
-            "nationality": {
-              "type": "string",
-              "description": "The prospect's nationality."
-            },
-            "referral_source": {
-              "type": "string",
-              "description": "The referral source (e.g., 'Internal', 'External', etc.)."
-            }
-          },
-          "required": ["first_name", "last_name", "dob", "nationality", "referral_source"]
-        }
-      }
-    },
-    {
-      "type": "function",
-      "function": {
         "name": "fetch_prospect_details",
-        "description": "Step 1.2: Load prospect data from the CRM using the given full name.",
+        "description": "Load prospect data from the CRM using the given full name.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -534,7 +487,7 @@ TOOLS = [
       "type": "function",
       "function": {
         "name": "collect_kyc_info",
-        "description": "Step 2.1 - KYC Information Collection: checks if mandatory fields are present.",
+        "description": "KYC Information Collection: checks if mandatory fields are present.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -575,7 +528,7 @@ TOOLS = [
       "type": "function",
       "function": {
         "name": "collect_sow_info",
-        "description": "Step 2.2 - Collect declared source of wealth (SOW) from prospect data.",
+        "description": "Collect declared source of wealth (SOW) from prospect data.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -616,7 +569,7 @@ TOOLS = [
       "type": "function",
       "function": {
         "name": "perform_data_management_ai_extraction",
-        "description": "Step 2.3 - Parse attached docs (PDFs, images, etc.) with AI to extract relevant data.",
+        "description": "Parse attached docs (PDFs, images, etc.) with AI to extract relevant data.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -649,7 +602,7 @@ TOOLS = [
       "type": "function",
       "function": {
         "name": "perform_name_screening",
-        "description": "Step 2.4 - Randomly decides if the name appears on watchlists or sanctions lists.",
+        "description": "Randomly decides if the name appears on watchlists or sanctions lists.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -690,7 +643,7 @@ TOOLS = [
       "type": "function",
       "function": {
         "name": "create_client_profile",
-        "description": "Step 2.5 - Create a risk profile for the client based on name screening and nationality.",
+        "description": "Create a risk profile for the client based on name screening and nationality.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -731,7 +684,7 @@ TOOLS = [
       "type": "function",
       "function": {
         "name": "perform_compliance_risk_assessment",
-        "description": "Step 2.6 - Final compliance check to determine if Enhanced Due Diligence is needed.",
+        "description": "Compliance check to determine if Enhanced Due Diligence is needed.",
         "parameters": {
           "type": "object",
           "properties": {
@@ -739,9 +692,6 @@ TOOLS = [
              "type": "object",
               "properties": {
                 "clientID": {
-                  "type": "string"
-                },
-                "status": {
                   "type": "string"
                 },
                 "name_screening_result": {
@@ -753,101 +703,10 @@ TOOLS = [
               },
               "required": [
                 "clientID",
-                "status",
                 "name_screening_result",
                 "risk_level"
               ],
               "description": "Prospect data containing risk_level, status, etc."
-            }
-          }
-        }
-      }
-    },
-    {
-      "type": "function",
-      "function": {
-        "name": "assign_first_line_of_defence",
-        "description": "Step 3.1 - Assign the case to a human interface for go/no-go (first line of defence).",
-        "parameters": {
-          "type": "object",
-          "properties": {
-              "prospect_data": {
-                "type": "object",
-                "properties": {
-                    "clientID": {
-                      "type": "string"
-                    },
-                    "status": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "clientID",
-                    "status"
-                  ],
-                  "description": "A dictionary containing up-to-date prospect info and status."
-              }
-            },
-            "required": ["prospect_data"]
-        }
-      }
-    },
-    {
-      "type": "function",
-      "function": {
-        "name": "receive_first_line_of_defence",
-        "description": "Step 3.2 - Receive outcome from the human interface (first line of defence).",
-        "parameters": {
-          "type": "object",
-          "properties": {
-              "prospect_data": {
-                "type": "object",
-                "properties": {
-                    "clientID": {
-                      "type": "string"
-                    },
-                    "status": {
-                      "type": "string"
-                    }
-                  },
-                  "required": [
-                    "clientID",
-                    "status"
-                  ],
-                  "description": "A dictionary containing up-to-date prospect info and status."
-              }
-            },
-            "required": ["prospect_data"]
-        }
-      }
-    },
-    {
-      "type": "function",
-      "function": {
-        "name": "check_required_documents",
-        "description": "Step 4.1 - Verify that the required documents have been provided and extract data.",
-         "parameters": {
-          "type": "object",
-          "properties": {
-            "prospect_data": {
-              "type": "object",
-              "properties": {
-                "clientID": {
-                  "type": "string"
-                },
-                "documents_provided": {
-                  "type": "array",
-                  "description": "A list of documents name provided by the prospect.",
-                  "items": {
-                    "type": "string"
-                  }
-                }
-              },
-              "required": [
-                "clientID",
-                "documents_provided"
-              ],
-              "description": "A dictionary of prospect data that may include 'documents_provided'."
             }
           },
           "required": ["prospect_data"]
@@ -857,8 +716,8 @@ TOOLS = [
     {
       "type": "function",
       "function": {
-        "name": "generate_compliance_verification_report",
-        "description": "Step 4.2 - Produce a structured compliance report.",
+        "name": "assign_first_line_of_defence",
+        "description": "Assign the case to a human interface for go/no-go (first line of defence).",
         "parameters": {
           "type": "object",
           "properties": {
@@ -867,20 +726,23 @@ TOOLS = [
                 "properties": {
                     "clientID": {
                       "type": "string"
-                    },
-                    "status": {
-                      "type": "string"
                     }
                   },
                   "required": [
-                    "clientID",
-                    "status"
+                    "clientID"
                   ],
                   "description": "A dictionary containing up-to-date prospect info and status."
               }
             },
             "required": ["prospect_data"]
         }
+      }
+    },
+    {
+      "type": "function",
+      "function": {
+        "name": "instructions_complete",
+        "description": "signal that the execution should end.",
       }
     }
 ]
