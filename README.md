@@ -104,4 +104,6 @@ uvicorn app:app
 ```
 
 Note: Be sure that the user is authorized in CosmosDB with appropriate roles to perform data operations.
-Run the cosmosdb_cli_addrole.sh to set roles
+*Run the cosmosdb_cli_addrole.sh to set roles*
+
+### Use the Testing-o1.ipynb to create and manage prospects in the db and for fast testing.
